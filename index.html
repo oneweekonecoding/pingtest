@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PING — 속도 측정</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+–bg: #0a0a0f;
+–surface: #12121a;
+–border: #1e1e2e;
+–accent: #00f5c4;
+–accent2: #ff3e6c;
+–accent3: #7b5ea7;
+–text: #e8e8f0;
+–muted: #555570;
+–mono: ‘Space Mono’, monospace;
+–sans: ‘Syne’, sans-serif;
+}
+
+body {
+background: var(–bg);
+color: var(–text);
+font-family: var(–sans);
+min-height: 100vh;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+overflow-x: hidden;
+}
+
+/* Background grid */
+body::before {
+content: ‘’;
+position: fixed;
+inset: 0;
+background-image:
+linear-gradient(rgba(0,245,196,0.03) 1px, transparent 1px),
+linear-gradient(90deg, rgba(0,245,196,0.03) 1px, transparent 1px);
+background-size: 40px 40px;
+pointer-events: none;
+z-index: 0;
+}
+
+.container {
+position: relative;
+z-index: 1;
+width: min(520px, 92vw);
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 2rem;
+}
+
+/* Header */
+.header {
+text-align: center;
+}
+.logo {
+font-family: var(–mono);
+font-size: 0.75rem;
+letter-spacing: 0.3em;
+color: var(–accent);
+text-transform: uppercase;
+margin-bottom: 0.5rem;
+}
+h1 {
+font-size: clamp(2rem, 8vw, 3rem);
+font-weight: 800;
+letter-spacing: -0.03em;
+background: linear-gradient(135deg, var(–text) 0%, var(–muted) 100%);
+-webkit-background-clip: text;
+-webkit-text-fill-color: transparent;
+background-clip: text;
+}
+
+/* Main meter */
+.meter-wrap {
+width: 100%;
+background: var(–surface);
+border: 1px solid var(–border);
+border-radius: 20px;
+padding: 2.5rem 2rem;
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 1.5rem;
+position: relative;
+overflow: hidden;
+}
+.meter-wrap::after {
+content: ‘’;
+position: absolute;
+top: -60px; left: 50%; transform: translateX(-50%);
+width: 200px; height: 120px;
+background: radial-gradient(ellipse, rgba(0,245,196,0.08) 0%, transparent 70%);
+pointer-events: none;
+}
+
+/* Arc gauge */
+.gauge-wrap {
+position: relative;
+width: 220px;
+height: 120px;
+}
+.gauge-svg {
+width: 100%;
+height: 100%;
+overflow: visible;
+}
+.gauge-bg {
+fill: none;
+stroke: var(–border);
+stroke-width: 8;
+stroke-linecap: round;
+}
+.gauge-fill {
+fill: none;
+stroke: var(–accent);
+stroke-width: 8;
+stroke-linecap: round;
+stroke-dasharray: 282.7;
+stroke-dashoffset: 282.7;
+transition: stroke-dashoffset 0.4s ease, stroke 0.4s ease;
+filter: drop-shadow(0 0 6px var(–accent));
+}
+.gauge-center {
+position: absolute;
+inset: 0;
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: flex-end;
+padding-bottom: 0.5rem;
+}
+.gauge-value {
+font-family: var(–mono);
+font-size: 2.6rem;
+font-weight: 700;
+line-height: 1;
+color: var(–text);
+transition: color 0.4s ease;
+}
+.gauge-unit {
+font-family: var(–mono);
+font-size: 0.7rem;
+color: var(–muted);
+letter-spacing: 0.15em;
+margin-top: 2px;
+}
+
+/* Status label */
+.status-label {
+font-family: var(–mono);
+font-size: 0.75rem;
+letter-spacing: 0.2em;
+color: var(–muted);
+text-transform: uppercase;
+min-height: 1.2em;
+transition: color 0.3s;
+}
+.status-label.running { color: var(–accent); }
+.status-label.done { color: var(–accent); }
+.status-label.error { color: var(–accent2); }
+
+/* Stats row */
+.stats-grid {
+width: 100%;
+display: grid;
+grid-template-columns: repeat(3, 1fr);
+gap: 0.75rem;
+}
+.stat-card {
+background: var(–bg);
+border: 1px solid var(–border);
+border-radius: 12px;
+padding: 0.9rem 0.5rem;
+text-align: center;
+position: relative;
+overflow: hidden;
+transition: border-color 0.3s, transform 0.2s;
+}
+.stat-card.highlight {
+border-color: var(–accent);
+box-shadow: 0 0 12px rgba(0,245,196,0.08);
+}
+.stat-card::before {
+content: ‘’;
+position: absolute;
+top: 0; left: 0; right: 0;
+height: 2px;
+background: var(–accent);
+opacity: 0;
+transition: opacity 0.3s;
+}
+.stat-card.highlight::before { opacity: 1; }
+.stat-label {
+font-family: var(–mono);
+font-size: 0.6rem;
+letter-spacing: 0.2em;
+color: var(–muted);
+text-transform: uppercase;
+margin-bottom: 0.35rem;
+}
+.stat-value {
+font-family: var(–mono);
+font-size: 1.25rem;
+font-weight: 700;
+color: var(–text);
+transition: color 0.3s;
+}
+.stat-value.fresh { color: var(–accent); }
+.stat-unit {
+font-family: var(–mono);
+font-size: 0.58rem;
+color: var(–muted);
+margin-top: 2px;
+}
+
+/* Progress bar */
+.progress-wrap {
+width: 100%;
+display: flex;
+flex-direction: column;
+gap: 0.5rem;
+}
+.progress-bar-bg {
+width: 100%;
+height: 4px;
+background: var(–border);
+border-radius: 2px;
+overflow: hidden;
+}
+.progress-bar-fill {
+height: 100%;
+background: linear-gradient(90deg, var(–accent3), var(–accent));
+border-radius: 2px;
+width: 0%;
+transition: width 0.3s ease;
+box-shadow: 0 0 8px var(–accent);
+}
+.progress-info {
+display: flex;
+justify-content: space-between;
+font-family: var(–mono);
+font-size: 0.65rem;
+color: var(–muted);
+}
+
+/* Log */
+.log-wrap {
+width: 100%;
+background: var(–bg);
+border: 1px solid var(–border);
+border-radius: 10px;
+padding: 0.75rem 1rem;
+max-height: 90px;
+overflow-y: auto;
+font-family: var(–mono);
+font-size: 0.65rem;
+color: var(–muted);
+line-height: 1.7;
+display: none;
+}
+.log-wrap.visible { display: block; }
+.log-line { display: flex; gap: 0.75rem; }
+.log-time { color: var(–accent3); flex-shrink: 0; }
+.log-msg { color: var(–muted); }
+.log-val { color: var(–accent); margin-left: auto; flex-shrink: 0; }
+
+/* Button */
+.btn-start {
+font-family: var(–mono);
+font-size: 0.85rem;
+letter-spacing: 0.12em;
+text-transform: uppercase;
+background: transparent;
+color: var(–accent);
+border: 1.5px solid var(–accent);
+border-radius: 8px;
+padding: 0.85rem 2.5rem;
+cursor: pointer;
+position: relative;
+overflow: hidden;
+transition: color 0.3s, background 0.3s, box-shadow 0.3s;
+}
+.btn-start::before {
+content: ‘’;
+position: absolute;
+inset: 0;
+background: var(–accent);
+opacity: 0;
+transition: opacity 0.3s;
+}
+.btn-start:hover::before { opacity: 0.08; }
+.btn-start:hover { box-shadow: 0 0 20px rgba(0,245,196,0.2); }
+.btn-start:active { transform: scale(0.98); }
+.btn-start:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-start span { position: relative; z-index: 1; }
+
+/* Pulse dot */
+@keyframes pulse {
+0%, 100% { opacity: 1; transform: scale(1); }
+50% { opacity: 0.4; transform: scale(0.8); }
+}
+.pulse-dot {
+display: inline-block;
+width: 6px; height: 6px;
+border-radius: 50%;
+background: var(–accent);
+animation: pulse 1s ease-in-out infinite;
+vertical-align: middle;
+margin-right: 6px;
+}
+
+/* Quality badge */
+.quality-badge {
+font-family: var(–mono);
+font-size: 0.7rem;
+letter-spacing: 0.15em;
+padding: 0.25rem 0.75rem;
+border-radius: 20px;
+border: 1px solid;
+transition: all 0.4s;
+display: none;
+}
+.quality-badge.show { display: inline-block; }
+.quality-excellent { color: #00f5c4; border-color: #00f5c4; background: rgba(0,245,196,0.07); }
+.quality-good { color: #7ec8e3; border-color: #7ec8e3; background: rgba(126,200,227,0.07); }
+.quality-fair { color: #f5a623; border-color: #f5a623; background: rgba(245,166,35,0.07); }
+.quality-poor { color: #ff3e6c; border-color: #ff3e6c; background: rgba(255,62,108,0.07); }
+
+/* Scrollbar */
+.log-wrap::-webkit-scrollbar { width: 4px; }
+.log-wrap::-webkit-scrollbar-track { background: transparent; }
+.log-wrap::-webkit-scrollbar-thumb { background: var(–border); border-radius: 2px; }
+
+/* Jitter animation for gauge while running */
+@keyframes glow-pulse {
+0%, 100% { filter: drop-shadow(0 0 4px var(–accent)); }
+50% { filter: drop-shadow(0 0 12px var(–accent)); }
+}
+.gauge-fill.running { animation: glow-pulse 1s ease-in-out infinite; }
+
+footer {
+font-family: var(–mono);
+font-size: 0.6rem;
+color: var(–muted);
+letter-spacing: 0.1em;
+opacity: 0.5;
+}
+</style>
+
+</head>
+<body>
+
+<div class="container">
+  <div class="header">
+    <div class="logo">● Network Diagnostics</div>
+    <h1>PING TEST</h1>
+  </div>
+
+  <div class="meter-wrap">
+    <!-- Arc gauge -->
+    <div class="gauge-wrap">
+      <svg class="gauge-svg" viewBox="0 0 220 120">
+        <!-- Background arc: half circle from 180deg to 0deg -->
+        <path class="gauge-bg"
+          d="M 20 110 A 90 90 0 0 1 200 110"
+        />
+        <path class="gauge-fill" id="gaugeFill"
+          d="M 20 110 A 90 90 0 0 1 200 110"
+        />
+        <!-- Tick marks -->
+        <g id="ticks"></g>
+      </svg>
+      <div class="gauge-center">
+        <div class="gauge-value" id="gaugeValue">—</div>
+        <div class="gauge-unit">ms ping</div>
+      </div>
+    </div>
+
+```
+<div class="status-label" id="statusLabel">대기 중</div>
+<div class="quality-badge" id="qualityBadge"></div>
+
+<!-- Stats -->
+<div class="stats-grid">
+  <div class="stat-card" id="cardMin">
+    <div class="stat-label">최솟값</div>
+    <div class="stat-value" id="valMin">—</div>
+    <div class="stat-unit">ms</div>
+  </div>
+  <div class="stat-card" id="cardAvg">
+    <div class="stat-label">평균</div>
+    <div class="stat-value" id="valAvg">—</div>
+    <div class="stat-unit">ms</div>
+  </div>
+  <div class="stat-card" id="cardMax">
+    <div class="stat-label">최댓값</div>
+    <div class="stat-value" id="valMax">—</div>
+    <div class="stat-unit">ms</div>
+  </div>
+  <div class="stat-card" id="cardJitter">
+    <div class="stat-label">지터</div>
+    <div class="stat-value" id="valJitter">—</div>
+    <div class="stat-unit">ms</div>
+  </div>
+  <div class="stat-card" id="cardLoss">
+    <div class="stat-label">패킷손실</div>
+    <div class="stat-value" id="valLoss">—</div>
+    <div class="stat-unit">%</div>
+  </div>
+  <div class="stat-card" id="cardCount">
+    <div class="stat-label">샘플수</div>
+    <div class="stat-value" id="valCount">0</div>
+    <div class="stat-unit">회</div>
+  </div>
+</div>
+
+<!-- Progress -->
+<div class="progress-wrap" id="progressWrap" style="display:none">
+  <div class="progress-bar-bg">
+    <div class="progress-bar-fill" id="progressFill"></div>
+  </div>
+  <div class="progress-info">
+    <span id="progressText">측정 중...</span>
+    <span id="progressPct">0%</span>
+  </div>
+</div>
+
+<!-- Log -->
+<div class="log-wrap" id="logWrap"></div>
+
+<button class="btn-start" id="btnStart" onclick="startTest()">
+  <span>측정 시작</span>
+</button>
+```
+
+  </div>
+
+  <footer>자기 자신에게 HTTP 요청 · GitHub Pages 환경에서 정상 작동</footer>
+</div>
+
+<script>
+// ── Config ──────────────────────────────────────────────────────────────────
+const PING_COUNT = 20;
+let endpointIdx = 0;
+
+// ── State ────────────────────────────────────────────────────────────────────
+let pings = [];
+let running = false;
+let abortCtrl = null;
+
+// ── DOM refs ─────────────────────────────────────────────────────────────────
+const gaugeFill   = document.getElementById('gaugeFill');
+const gaugeValue  = document.getElementById('gaugeValue');
+const statusLabel = document.getElementById('statusLabel');
+const qualityBadge = document.getElementById('qualityBadge');
+const btnStart    = document.getElementById('btnStart');
+const progressWrap = document.getElementById('progressWrap');
+const progressFill = document.getElementById('progressFill');
+const progressText = document.getElementById('progressText');
+const progressPct  = document.getElementById('progressPct');
+const logWrap     = document.getElementById('logWrap');
+
+const valMin    = document.getElementById('valMin');
+const valAvg    = document.getElementById('valAvg');
+const valMax    = document.getElementById('valMax');
+const valJitter = document.getElementById('valJitter');
+const valLoss   = document.getElementById('valLoss');
+const valCount  = document.getElementById('valCount');
+
+// ── Gauge arc math ───────────────────────────────────────────────────────────
+// Arc path total length ≈ π * r = π * 90 ≈ 282.7
+const ARC_LEN = Math.PI * 90;
+
+function setGauge(ms) {
+  // Map 0–500ms → 0–100% arc
+  const pct = Math.min(ms / 500, 1);
+  const offset = ARC_LEN * (1 - pct);
+  gaugeFill.style.strokeDashoffset = offset;
+
+  // Color: green < 50, yellow < 150, red >= 150
+  if (ms < 50)       gaugeFill.style.stroke = '#00f5c4';
+  else if (ms < 150) gaugeFill.style.stroke = '#f5c542';
+  else               gaugeFill.style.stroke = '#ff3e6c';
+}
+
+// ── Log helper ───────────────────────────────────────────────────────────────
+function addLog(msg, val) {
+  logWrap.classList.add('visible');
+  const now = new Date();
+  const ts = `${String(now.getSeconds()).padStart(2,'0')}.${String(now.getMilliseconds()).padStart(3,'0')}`;
+  const line = document.createElement('div');
+  line.className = 'log-line';
+  line.innerHTML = `<span class="log-time">${ts}</span><span class="log-msg">${msg}</span>${val !== undefined ? `<span class="log-val">${val}</span>` : ''}`;
+  logWrap.appendChild(line);
+  logWrap.scrollTop = logWrap.scrollHeight;
+}
+
+// ── Stats update ─────────────────────────────────────────────────────────────
+function flashEl(el) {
+  el.classList.add('fresh');
+  setTimeout(() => el.classList.remove('fresh'), 600);
+}
+
+function updateStats(successPings, totalAttempts) {
+  if (successPings.length === 0) return;
+  const min = Math.min(...successPings);
+  const max = Math.max(...successPings);
+  const avg = successPings.reduce((a,b) => a+b, 0) / successPings.length;
+
+  // Jitter: mean abs deviation between consecutive
+  let jitter = 0;
+  for (let i = 1; i < successPings.length; i++) {
+    jitter += Math.abs(successPings[i] - successPings[i-1]);
+  }
+  jitter = successPings.length > 1 ? jitter / (successPings.length - 1) : 0;
+
+  const loss = ((totalAttempts - successPings.length) / totalAttempts * 100);
+
+  valMin.textContent = min.toFixed(0);    flashEl(valMin);
+  valMax.textContent = max.toFixed(0);    flashEl(valMax);
+  valAvg.textContent = avg.toFixed(1);    flashEl(valAvg);
+  valJitter.textContent = jitter.toFixed(1); flashEl(valJitter);
+  valLoss.textContent = loss.toFixed(0);  flashEl(valLoss);
+  valCount.textContent = successPings.length;
+
+  // Gauge shows current (last) ping
+  const current = successPings[successPings.length - 1];
+  gaugeValue.textContent = current.toFixed(0);
+  setGauge(current);
+
+  // Highlight best card
+  document.querySelectorAll('.stat-card').forEach(c => c.classList.remove('highlight'));
+  document.getElementById('cardMin').classList.add('highlight');
+}
+
+// ── Quality assessment ────────────────────────────────────────────────────────
+function showQuality(avg) {
+  qualityBadge.classList.add('show');
+  qualityBadge.className = 'quality-badge show';
+  if (avg < 30) {
+    qualityBadge.textContent = '● EXCELLENT';
+    qualityBadge.classList.add('quality-excellent');
+  } else if (avg < 80) {
+    qualityBadge.textContent = '● GOOD';
+    qualityBadge.classList.add('quality-good');
+  } else if (avg < 200) {
+    qualityBadge.textContent = '● FAIR';
+    qualityBadge.classList.add('quality-fair');
+  } else {
+    qualityBadge.textContent = '● POOR';
+    qualityBadge.classList.add('quality-poor');
+  }
+}
+
+// ── Single ping ───────────────────────────────────────────────────────────────
+async function ping(signal) {
+  const url = location.href.split('?')[0] + '?_=' + Date.now() + '-' + Math.random();
+  const t0 = performance.now();
+  try {
+    await fetch(url, {
+      method: 'GET',
+      cache: 'no-store',
+      signal,
+    });
+    return performance.now() - t0;
+  } catch(e) {
+    if (e.name === 'AbortError') throw e;
+    return null;
+  }
+}
+
+// ── Main test ─────────────────────────────────────────────────────────────────
+async function startTest() {
+  if (running) {
+    // Stop
+    abortCtrl.abort();
+    return;
+  }
+
+  // Reset
+  pings = [];
+  running = true;
+  abortCtrl = new AbortController();
+  logWrap.innerHTML = '';
+  logWrap.classList.remove('visible');
+  qualityBadge.classList.remove('show');
+  gaugeFill.style.strokeDashoffset = ARC_LEN;
+  gaugeFill.style.stroke = 'var(--accent)';
+  gaugeValue.textContent = '…';
+  [valMin, valAvg, valMax, valJitter, valLoss].forEach(el => el.textContent = '—');
+  valCount.textContent = '0';
+
+  btnStart.innerHTML = '<span><span class="pulse-dot"></span>중단</span>';
+  btnStart.style.borderColor = 'var(--accent2)';
+  btnStart.style.color = 'var(--accent2)';
+  progressWrap.style.display = 'flex';
+  gaugeFill.classList.add('running');
+
+  const endpoint = location.hostname || 'localhost';
+  endpointIdx++;
+  addLog('대상 서버', endpoint);
+
+  let totalAttempts = 0;
+  let successPings = [];
+
+  try {
+    for (let i = 0; i < PING_COUNT; i++) {
+      statusLabel.className = 'status-label running';
+      statusLabel.textContent = `핑 측정 중... ${i+1} / ${PING_COUNT}`;
+
+      const pct = ((i) / PING_COUNT) * 100;
+      progressFill.style.width = pct + '%';
+      progressPct.textContent = Math.round(pct) + '%';
+      progressText.textContent = `${i+1} / ${PING_COUNT} 측정 중`;
+
+      totalAttempts++;
+      const ms = await ping(abortCtrl.signal);
+
+      if (ms !== null) {
+        successPings.push(ms);
+        addLog(`핑 #${String(i+1).padStart(2,'0')}`, `${ms.toFixed(1)} ms`);
+        updateStats(successPings, totalAttempts);
+      } else {
+        addLog(`핑 #${String(i+1).padStart(2,'0')} 실패`, 'timeout');
+      }
+
+      // Small delay between pings
+      await new Promise(r => setTimeout(r, 200));
+    }
+
+    // Done
+    progressFill.style.width = '100%';
+    progressPct.textContent = '100%';
+    statusLabel.className = 'status-label done';
+    statusLabel.textContent = '측정 완료 ✓';
+
+    if (successPings.length > 0) {
+      const avg = successPings.reduce((a,b)=>a+b,0) / successPings.length;
+      showQuality(avg);
+      addLog('평균 핑', `${avg.toFixed(1)} ms`);
+      addLog('완료', `${successPings.length}/${PING_COUNT} 성공`);
+    }
+
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      statusLabel.className = 'status-label';
+      statusLabel.textContent = '중단됨';
+      addLog('측정 중단됨', '—');
+    } else {
+      statusLabel.className = 'status-label error';
+      statusLabel.textContent = '오류 발생';
+      addLog('오류', e.message);
+    }
+  }
+
+  running = false;
+  gaugeFill.classList.remove('running');
+  btnStart.innerHTML = '<span>다시 측정</span>';
+  btnStart.style.borderColor = 'var(--accent)';
+  btnStart.style.color = 'var(--accent)';
+  btnStart.disabled = false;
+}
+</script>
+
+</body>
+</html>
